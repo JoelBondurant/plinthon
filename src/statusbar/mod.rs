@@ -1,6 +1,7 @@
 mod core;
-mod demo;
 mod spinner;
 
-pub use core::{Segment, StatusBar, Stopwatch, Tone};
-pub use demo::{EditorBar, GlobalBar, PlotBar, TableBar, WorkspaceBar};
+#[allow(unused_imports)] // public widget surface in a binary demo crate
+pub use core::{
+	Segment, SegmentWidth, StatusBar, StatusBarModel, StatusBarStyle, Stopwatch, Tone,
+};

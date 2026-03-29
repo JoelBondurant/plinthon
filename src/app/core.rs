@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 use iced::widget::{column, container, row, text};
 use iced::{time, Background, Border, Element, Length, Subscription, Task, Theme};
 
+use crate::app::demo::{EditorBar, GlobalBar, PlotBar, TableBar, WorkspaceBar};
 use crate::colors;
-use crate::statusbar::{EditorBar, GlobalBar, PlotBar, StatusBar, TableBar, WorkspaceBar};
+use crate::statusbar::{StatusBar, StatusBarModel};
 
 const TICK_RATE: Duration = Duration::from_millis(120);
 
@@ -69,7 +70,7 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 			"Modal editing, wrapping, diagnostics, execution context",
 			"Status bar carries editor-specific execution state cleanly",
 		],
-		demo.editor.view(),
+		demo.editor.status_bar(),
 	);
 	let table = panel(
 		"Data Table",
@@ -78,7 +79,7 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 			"Fetch progress, row counts, byte counts, sort/filter state",
 			"Loading hints remain local to the table surface",
 		],
-		demo.table.view(),
+		demo.table.status_bar(),
 	);
 	let plot = panel(
 		"Plot Dashboard",
@@ -87,7 +88,7 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 			"Separate render and export lifecycles",
 			"Elapsed times stay visible without leaking concerns upward",
 		],
-		demo.plot.view(),
+		demo.plot.status_bar(),
 	);
 	let activity = panel(
 		"Workspace Activity",
@@ -96,14 +97,14 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 			"Last operation summaries and failures",
 			"One bar can summarize the whole workspace without hiding local bars",
 		],
-		demo.workspace.view(),
+		demo.workspace.status_bar(),
 	);
 
 	let layout = column![
 		header(),
 		row![editor, table].spacing(16),
 		row![plot, activity].spacing(16),
-		demo.global.view().view()
+		demo.global.status_bar().view()
 	]
 	.spacing(16)
 	.width(Length::Fill)

@@ -1,6 +1,5 @@
 use iced::Color;
 
-pub const ACCENT: Color = rgb(150, 4, 250);
 pub const BG_APP: Color = rgb(1, 1, 1);
 pub const BG_PANEL: Color = rgb(4, 4, 4);
 pub const BG_SEGMENT: Color = rgb(8, 8, 16);

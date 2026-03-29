@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::statusbar::{Segment, StatusBar, Stopwatch, Tone};
+use crate::statusbar::{Segment, StatusBar, StatusBarModel, Stopwatch, Tone};
 
 #[derive(Debug, Clone)]
 pub struct EditorBar {
@@ -54,13 +54,16 @@ impl EditorBar {
 		}
 	}
 
-	pub fn tick(&mut self, now: Instant) {
+}
+
+impl StatusBarModel for EditorBar {
+	fn tick(&mut self, now: Instant) {
 		self.now = now;
 		self.spinner_phase = self.spinner_phase.wrapping_add(1);
 		self.exec.tick(now);
 	}
 
-	pub fn view(&self) -> StatusBar {
+	fn status_bar(&self) -> StatusBar {
 		let progress = self.exec.progress(self.now);
 		let running = self.exec.running(self.now);
 		let state = if running {
@@ -71,18 +74,21 @@ impl EditorBar {
 		let exec = if running {
 			self.exec.timer.segment(self.now, "exec", Tone::Accent)
 		} else {
-			Segment::text("exec 0.000s")
+			Segment::label_value("exec", "0.000s", Tone::Normal)
 		};
 		StatusBar::new()
 			.left(Segment::toned_text("vim NORMAL", Tone::Accent))
 			.left(Segment::text("wrap ON"))
 			.left(Segment::text("UTF-8"))
-			.left(Segment::text("Ln 184, Col 19"))
-			.right(Segment::text("sel 3 rows / 92 chars"))
-			.right(Segment::progress(
+			.left(Segment::label_value("Ln", "184, Col 19", Tone::Normal))
+			.right(
+				Segment::label_value("sel", "3 rows / 92 chars", Tone::Normal)
+					.max_chars(20)
+					.fixed_width(138),
+			)
+			.right(Segment::progress_percent(
 				"cpu",
 				progress,
-				format!("{:.0}%", progress * 100.0),
 				if running { Tone::Accent } else { Tone::Normal },
 			))
 			.right(exec)
@@ -99,28 +105,26 @@ impl TableBar {
 		}
 	}
 
-	pub fn tick(&mut self, now: Instant) {
+}
+
+impl StatusBarModel for TableBar {
+	fn tick(&mut self, now: Instant) {
 		self.now = now;
 		self.spinner_phase = self.spinner_phase.wrapping_add(1);
 		self.fetch.tick(now);
 	}
 
-	pub fn view(&self) -> StatusBar {
+	fn status_bar(&self) -> StatusBar {
 		let progress = self.fetch.progress(self.now);
 		let running = self.fetch.running(self.now);
 		StatusBar::new()
-			.left(Segment::text("rows 18,420,114"))
-			.left(Segment::text("cols 18"))
-			.left(Segment::text("loaded 2.6 GiB"))
-			.right(Segment::toned_text("sort ts desc", Tone::Accent))
-			.right(Segment::toned_text("filter region=us", Tone::Accent))
+			.left(Segment::label_value("rows", "18,420,114", Tone::Normal))
+			.left(Segment::label_value("cols", "18", Tone::Normal))
+			.left(Segment::label_value("loaded", "2.6 GiB", Tone::Normal).fixed_width(118))
+			.right(Segment::badge("sort ts desc", Tone::Accent).max_chars(12))
+			.right(Segment::badge("filter region=us", Tone::Accent).max_chars(16))
 			.right(if running {
-				Segment::progress(
-					"fetch",
-					progress,
-					format!("{:.0}%", progress * 100.0),
-					Tone::Warning,
-				)
+				Segment::progress_percent("fetch", progress, Tone::Warning)
 			} else {
 				Segment::toned_text("fetch complete", Tone::Success)
 			})
@@ -150,14 +154,17 @@ impl PlotBar {
 		}
 	}
 
-	pub fn tick(&mut self, now: Instant) {
+}
+
+impl StatusBarModel for PlotBar {
+	fn tick(&mut self, now: Instant) {
 		self.now = now;
 		self.spinner_phase = self.spinner_phase.wrapping_add(1);
 		self.render.tick(now);
 		self.export.tick(now);
 	}
 
-	pub fn view(&self) -> StatusBar {
+	fn status_bar(&self) -> StatusBar {
 		let render_running = self.render.running(self.now);
 		let export_running = self.export.running(self.now);
 		StatusBar::new()
@@ -169,12 +176,7 @@ impl PlotBar {
 			.left(self.render.timer.segment(self.now, "render", Tone::Accent))
 			.right(if export_running {
 				let export = self.export.progress(self.now);
-				Segment::progress(
-					"export svg",
-					export,
-					format!("{:.0}%", export * 100.0),
-					Tone::Accent,
-				)
+				Segment::progress_percent("export svg", export, Tone::Accent)
 			} else {
 				Segment::toned_text("export avif stalled", Tone::Danger)
 			})
@@ -199,25 +201,30 @@ impl WorkspaceBar {
 		}
 	}
 
-	pub fn tick(&mut self, now: Instant) {
+}
+
+impl StatusBarModel for WorkspaceBar {
+	fn tick(&mut self, now: Instant) {
 		self.now = now;
 		self.spinner_phase = self.spinner_phase.wrapping_add(1);
 		self.workspace_io.tick(now);
 	}
 
-	pub fn view(&self) -> StatusBar {
+	fn status_bar(&self) -> StatusBar {
 		let io = self.workspace_io.progress(self.now);
 		StatusBar::new()
 			.left(Segment::toned_text("postgres mainline", Tone::Success))
-			.left(Segment::spinner("jobs 3 active", self.spinner_phase, Tone::Accent))
-			.left(Segment::progress(
+			.left(
+				Segment::spinner("jobs 3 active", self.spinner_phase, Tone::Accent)
+					.fill_portion(1),
+			)
+			.left(Segment::progress_percent(
 				"workspace io",
 				(io * 0.7 + 0.15).clamp(0.0, 1.0),
-				format!("{:.0}%", (io * 70.0 + 15.0).clamp(0.0, 100.0)),
 				Tone::Accent,
 			))
-			.right(Segment::toned_text("warning temp schema drift", Tone::Warning))
-			.right(Segment::toned_text("last op imported 18.4M rows", Tone::Normal))
+			.right(Segment::badge("warning temp schema drift", Tone::Warning).max_chars(20))
+			.right(Segment::label_value("last", "imported 18.4M rows", Tone::Normal).max_chars(24))
 	}
 }
 
@@ -234,13 +241,16 @@ impl GlobalBar {
 		}
 	}
 
-	pub fn tick(&mut self, now: Instant) {
+}
+
+impl StatusBarModel for GlobalBar {
+	fn tick(&mut self, now: Instant) {
 		self.now = now;
 		self.spinner_phase = self.spinner_phase.wrapping_add(1);
 		self.cache_fill.tick(now);
 	}
 
-	pub fn view(&self) -> StatusBar {
+	fn status_bar(&self) -> StatusBar {
 		let fill = self.cache_fill.progress(self.now);
 		StatusBar::new()
 			.left(Segment::toned_text("connected", Tone::Success))
@@ -248,15 +258,14 @@ impl GlobalBar {
 				"background reconcile",
 				self.spinner_phase,
 				Tone::Accent,
-			))
-			.left(Segment::progress(
+			).compact())
+			.left(Segment::progress_percent(
 				"cache fill",
 				(fill * 0.6 + 0.2).clamp(0.0, 1.0),
-				format!("{:.0}%", (fill * 60.0 + 20.0).clamp(0.0, 100.0)),
 				Tone::Accent,
 			))
-			.right(Segment::toned_text("1 error export quota exceeded", Tone::Danger))
-			.right(Segment::toned_text("2 notices", Tone::Warning))
+			.right(Segment::badge("1 error export quota exceeded", Tone::Danger).max_chars(24))
+			.right(Segment::badge("2 notices", Tone::Warning))
 	}
 }
 

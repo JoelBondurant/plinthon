@@ -2,8 +2,7 @@ use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Frame, Geometry, Path, Stroke};
 use iced::{Color, Element, Length, Point, Rectangle, Renderer, Theme};
 
-use crate::colors;
-use crate::statusbar::core::Tone;
+use crate::statusbar::core::{StatusBarStyle, Tone};
 
 const DOT_COUNT: usize = 8;
 const FULL_ROTATIONS: usize = 3;
@@ -14,8 +13,12 @@ const DOT_RADIUS: f32 = 1.5;
 const SPINNER_SIZE: f32 = 16.0;
 const SPINNER_ALPHA: f32 = 0.8;
 
-pub fn view<Message: 'static>(phase: usize, tone: Tone) -> Element<'static, Message> {
-	Canvas::new(Spinner { phase, tone })
+pub fn view<Message: 'static>(
+	phase: usize,
+	tone: Tone,
+	style: StatusBarStyle,
+) -> Element<'static, Message> {
+	Canvas::new(Spinner { phase, tone, style })
 		.width(Length::Fixed(SPINNER_SIZE))
 		.height(Length::Fixed(SPINNER_SIZE))
 		.into()
@@ -24,6 +27,7 @@ pub fn view<Message: 'static>(phase: usize, tone: Tone) -> Element<'static, Mess
 struct Spinner {
 	phase: usize,
 	tone: Tone,
+	style: StatusBarStyle,
 }
 
 impl<Message> canvas::Program<Message> for Spinner {
@@ -42,8 +46,8 @@ impl<Message> canvas::Program<Message> for Spinner {
 		let orbit = bounds.width.min(bounds.height) * 0.36;
 		let total = CYCLE_FRAMES + SWEEP_FRAMES;
 		let frame_phase = self.phase % total;
-		let dot_color = self.tone.spinner_dot();
-		let accent = self.tone.text();
+		let dot_color = self.tone.spinner_dot(&self.style);
+		let accent = self.tone.text(&self.style);
 
 		for index in 0..DOT_COUNT {
 			let progress = index as f32 / DOT_COUNT as f32;
@@ -102,27 +106,27 @@ fn chase_alpha(index: usize, frame_phase: usize) -> f32 {
 }
 
 impl Tone {
-	pub(crate) fn spinner_dot(self) -> Color {
+	pub(crate) fn spinner_dot(self, style: &StatusBarStyle) -> Color {
 		match self {
 			Self::Normal => Color {
 				a: SPINNER_ALPHA,
-				..colors::TEXT_STATUS
+				..style.text_normal
 			},
 			Self::Accent => Color {
 				a: SPINNER_ALPHA,
-				..colors::ACCENT
+				..style.text_accent
 			},
 			Self::Success => Color {
 				a: SPINNER_ALPHA,
-				..colors::SUCCESS
+				..style.text_success
 			},
 			Self::Warning => Color {
 				a: SPINNER_ALPHA,
-				..colors::WARNING
+				..style.text_warning
 			},
 			Self::Danger => Color {
 				a: SPINNER_ALPHA,
-				..colors::DANGER
+				..style.text_danger
 			},
 		}
 	}
