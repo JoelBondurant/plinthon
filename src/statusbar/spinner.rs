@@ -5,9 +5,8 @@ use iced::{Color, Element, Length, Point, Rectangle, Renderer, Theme};
 use crate::statusbar::core::{StatusBarStyle, Tone};
 
 const DOT_COUNT: usize = 8;
-const FULL_ROTATIONS: usize = 3;
 const FRAMES_PER_STEP: usize = 3;
-const CYCLE_FRAMES: usize = DOT_COUNT * FULL_ROTATIONS * FRAMES_PER_STEP;
+const CYCLE_FRAMES: usize = DOT_COUNT * FRAMES_PER_STEP;
 const SWEEP_FRAMES: usize = DOT_COUNT;
 const DOT_RADIUS: f32 = 1.5;
 const SPINNER_SIZE: f32 = 16.0;

@@ -115,7 +115,7 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 		.width(Length::Fill)
 		.height(Length::Fill)
 		.style(|_theme| container::Style {
-			background: Some(Background::Color(colors::BG_APP)),
+			background: Some(Background::Color(colors::APP_BACKGROUND)),
 			..Default::default()
 		})
 		.into()
@@ -124,10 +124,10 @@ fn view(demo: &Demo) -> Element<'_, Message> {
 fn header<'a>() -> Element<'a, Message> {
 	container(
 		column![
-			text("Plinthon").size(24).color(colors::TEXT),
+			text("Plinthon").size(24).color(colors::APP_TEXT),
 			text("Status instrumentation for local panes and workspace activity.")
 				.size(13)
-				.color(colors::TEXT_STATUS)
+				.color(colors::STATUS_BAR_TEXT)
 		]
 		.spacing(4),
 	)
@@ -136,9 +136,9 @@ fn header<'a>() -> Element<'a, Message> {
 }
 
 fn panel<'a>(title: &'a str, lines: &'a [&'a str], status: StatusBar) -> Element<'a, Message> {
-	let mut body = column![text(title).size(16).color(colors::TEXT)].spacing(7);
+	let mut body = column![text(title).size(16).color(colors::APP_TEXT)].spacing(7);
 	for line in lines {
-		body = body.push(text(*line).size(13).color(colors::TEXT_MUTED));
+		body = body.push(text(*line).size(13).color(colors::APP_TEXT_MUTED));
 	}
 	container(column![
 		container(body).padding(14).height(Length::Fill),
@@ -147,9 +147,9 @@ fn panel<'a>(title: &'a str, lines: &'a [&'a str], status: StatusBar) -> Element
 	.width(Length::FillPortion(1))
 	.height(Length::FillPortion(1))
 	.style(|_theme| container::Style {
-		background: Some(Background::Color(colors::BG_PANEL)),
+		background: Some(Background::Color(colors::PANEL_BACKGROUND)),
 		border: Border {
-			color: colors::BORDER,
+			color: colors::PANEL_BORDER,
 			width: 1.0,
 			radius: 0.0.into(),
 		},

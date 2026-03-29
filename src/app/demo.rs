@@ -64,35 +64,30 @@ impl StatusBarModel for EditorBar {
 	}
 
 	fn status_bar(&self) -> StatusBar {
-		let progress = self.exec.progress(self.now);
-		let running = self.exec.running(self.now);
-		let state = if running {
-			Segment::spinner("Query running", self.spinner_phase, Tone::Accent)
-		} else {
-			Segment::toned_text("Query idle", Tone::Success)
-		};
-		let exec = if running {
-			self.exec.timer.segment(self.now, "exec", Tone::Accent)
-		} else {
-			Segment::label_value("exec", "0.000s", Tone::Normal)
-		};
 		StatusBar::new()
 			.left(Segment::toned_text("vim NORMAL", Tone::Accent))
 			.left(Segment::text("wrap ON"))
 			.left(Segment::text("UTF-8"))
-			.left(Segment::label_value("Ln", "184, Col 19", Tone::Normal))
+			.left(Segment::label_value("Ln", "184, Col 19", Tone::Normal).reserve_chars(14))
 			.right(
 				Segment::label_value("sel", "3 rows / 92 chars", Tone::Normal)
 					.max_chars(20)
-					.fixed_width(138),
+					.reserve_chars(20),
 			)
-			.right(Segment::progress_percent(
-				"cpu",
-				progress,
-				if running { Tone::Accent } else { Tone::Normal },
-			))
-			.right(exec)
-			.right(state)
+			.right(self.exec.timer_or_default(self.now, "exec", Tone::Accent).reserve_chars(12))
+			.right(self.exec.progress_segment(self.now, "cpu", Tone::Accent, Tone::Normal))
+			.right(
+				self.exec
+					.spinner_toggle(
+						self.now,
+						self.spinner_phase,
+						"Query running",
+						Tone::Accent,
+						"Query idle",
+						Tone::Success,
+					)
+					.reserve_chars(16),
+			)
 	}
 }
 
@@ -115,24 +110,31 @@ impl StatusBarModel for TableBar {
 	}
 
 	fn status_bar(&self) -> StatusBar {
-		let progress = self.fetch.progress(self.now);
-		let running = self.fetch.running(self.now);
 		StatusBar::new()
 			.left(Segment::label_value("rows", "18,420,114", Tone::Normal))
 			.left(Segment::label_value("cols", "18", Tone::Normal))
-			.left(Segment::label_value("loaded", "2.6 GiB", Tone::Normal).fixed_width(118))
+			.left(Segment::label_value("loaded", "2.6 GiB", Tone::Normal).reserve_chars(16))
 			.right(Segment::badge("sort ts desc", Tone::Accent).max_chars(12))
 			.right(Segment::badge("filter region=us", Tone::Accent).max_chars(16))
-			.right(if running {
-				Segment::progress_percent("fetch", progress, Tone::Warning)
-			} else {
-				Segment::toned_text("fetch complete", Tone::Success)
-			})
-			.right(if running {
-				Segment::spinner("virtualizing", self.spinner_phase, Tone::Warning)
-			} else {
-				Segment::text("viewport warm")
-			})
+			.right(self.fetch.progress_toggle(
+				self.now,
+				"fetch",
+				Tone::Warning,
+				"fetch complete",
+				Tone::Success,
+			))
+			.right(
+				self.fetch
+					.spinner_toggle(
+						self.now,
+						self.spinner_phase,
+						"virtualizing",
+						Tone::Warning,
+						"viewport warm",
+						Tone::Normal,
+					)
+					.reserve_chars(14),
+			)
 	}
 }
 
@@ -165,26 +167,28 @@ impl StatusBarModel for PlotBar {
 	}
 
 	fn status_bar(&self) -> StatusBar {
-		let render_running = self.render.running(self.now);
-		let export_running = self.export.running(self.now);
 		StatusBar::new()
-			.left(if render_running {
-				Segment::spinner("rendering", self.spinner_phase, Tone::Accent)
-			} else {
-				Segment::toned_text("render cached", Tone::Success)
-			})
-			.left(self.render.timer.segment(self.now, "render", Tone::Accent))
-			.right(if export_running {
-				let export = self.export.progress(self.now);
-				Segment::progress_percent("export svg", export, Tone::Accent)
-			} else {
-				Segment::toned_text("export avif stalled", Tone::Danger)
-			})
-			.right(self.export.timer.segment(
+			.left(self.render.spinner_toggle(
 				self.now,
-				"export",
-				if export_running { Tone::Accent } else { Tone::Danger },
+				self.spinner_phase,
+				"rendering",
+				Tone::Accent,
+				"render cached",
+				Tone::Success,
 			))
+			.left(self.render.timer_segment(self.now, "render", Tone::Accent).reserve_chars(12))
+			.right(self.export.progress_toggle(
+				self.now,
+				"export svg",
+				Tone::Accent,
+				"export avif stalled",
+				Tone::Danger,
+			))
+			.right(
+				self.export
+					.timer_with_tone(self.now, "export", Tone::Accent, Tone::Danger)
+					.reserve_chars(12),
+			)
 	}
 }
 
@@ -211,16 +215,17 @@ impl StatusBarModel for WorkspaceBar {
 	}
 
 	fn status_bar(&self) -> StatusBar {
-		let io = self.workspace_io.progress(self.now);
 		StatusBar::new()
 			.left(Segment::toned_text("postgres mainline", Tone::Success))
 			.left(
 				Segment::spinner("jobs 3 active", self.spinner_phase, Tone::Accent)
 					.fill_portion(1),
 			)
-			.left(Segment::progress_percent(
+			.left(self.workspace_io.scaled_progress_segment(
+				self.now,
 				"workspace io",
-				(io * 0.7 + 0.15).clamp(0.0, 1.0),
+				0.7,
+				0.15,
 				Tone::Accent,
 			))
 			.right(Segment::badge("warning temp schema drift", Tone::Warning).max_chars(20))
@@ -251,7 +256,6 @@ impl StatusBarModel for GlobalBar {
 	}
 
 	fn status_bar(&self) -> StatusBar {
-		let fill = self.cache_fill.progress(self.now);
 		StatusBar::new()
 			.left(Segment::toned_text("connected", Tone::Success))
 			.left(Segment::spinner(
@@ -259,9 +263,11 @@ impl StatusBarModel for GlobalBar {
 				self.spinner_phase,
 				Tone::Accent,
 			).compact())
-			.left(Segment::progress_percent(
+			.left(self.cache_fill.scaled_progress_segment(
+				self.now,
 				"cache fill",
-				(fill * 0.6 + 0.2).clamp(0.0, 1.0),
+				0.6,
+				0.2,
 				Tone::Accent,
 			))
 			.right(Segment::badge("1 error export quota exceeded", Tone::Danger).max_chars(24))
@@ -295,5 +301,86 @@ impl LoopingJob {
 		let elapsed = self.timer.elapsed(now).as_secs_f32();
 		let total = self.work.as_secs_f32().max(0.001);
 		(elapsed / total).clamp(0.0, 1.0)
+	}
+
+	fn spinner_toggle(
+		&self,
+		now: Instant,
+		phase: usize,
+		running_label: impl Into<String>,
+		running_tone: Tone,
+		idle_label: impl Into<String>,
+		idle_tone: Tone,
+	) -> Segment {
+		Segment::spinner_toggle(
+			self.running(now),
+			running_label,
+			phase,
+			running_tone,
+			idle_label,
+			idle_tone,
+		)
+	}
+
+	fn progress_toggle(
+		&self,
+		now: Instant,
+		progress_label: impl Into<String>,
+		progress_tone: Tone,
+		idle_label: impl Into<String>,
+		idle_tone: Tone,
+	) -> Segment {
+		Segment::progress_percent_toggle(
+			self.running(now),
+			progress_label,
+			self.progress(now),
+			progress_tone,
+			idle_label,
+			idle_tone,
+		)
+	}
+
+	fn progress_segment(&self, now: Instant, label: impl Into<String>, active: Tone, idle: Tone) -> Segment {
+		let tone = if self.running(now) { active } else { idle };
+		Segment::progress_percent(label, self.progress(now), tone)
+	}
+
+	fn scaled_progress_segment(
+		&self,
+		now: Instant,
+		label: impl Into<String>,
+		scale: f32,
+		offset: f32,
+		tone: Tone,
+	) -> Segment {
+		Segment::progress_percent(label, (self.progress(now) * scale + offset).clamp(0.0, 1.0), tone)
+	}
+
+	fn timer_segment(&self, now: Instant, label: impl Into<String>, tone: Tone) -> Segment {
+		self.timer.segment(now, label, tone)
+	}
+
+	fn timer_with_tone(
+		&self,
+		now: Instant,
+		label: impl Into<String>,
+		running_tone: Tone,
+		idle_tone: Tone,
+	) -> Segment {
+		self.timer.segment(now, label, if self.running(now) { running_tone } else { idle_tone })
+	}
+
+	fn timer_or_default(
+		&self,
+		now: Instant,
+		label: impl Into<String>,
+		running_tone: Tone,
+	) -> Segment {
+		let label = label.into();
+		if self.running(now) {
+			self.timer.segment(now, label, running_tone)
+		} else {
+			Segment::label_value(label, "0.000s", Tone::Normal)
+		}
 	}
 }

@@ -15,6 +15,11 @@ const RIGHT_LANE_PORTION: u16 = 2;
 const PROGRESS_WIDTH: f32 = 74.0;
 const PROGRESS_GIRTH: f32 = 10.0;
 const SEGMENT_FONT_SIZE: f32 = 12.0;
+const SEGMENT_CHAR_WIDTH: f32 = 7.0;
+const SEGMENT_HORIZONTAL_PADDING: f32 = 12.0;
+const SPINNER_LABEL_GAP: f32 = 5.0;
+const LABEL_VALUE_GAP: f32 = 4.0;
+const PROGRESS_GAP: f32 = 6.0;
 
 #[derive(Debug, Clone, Copy)]
 struct LayoutConfig {
@@ -37,9 +42,25 @@ pub enum Tone {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SegmentWidth {
 	#[default]
+	#[allow(dead_code)] // public widget API in a binary demo crate
 	Compact,
+	#[allow(dead_code)] // public widget API in a binary demo crate
 	Fixed(u16),
+	Chars {
+		chars: u16,
+		slot: SlotKind,
+	},
 	FillPortion(u16),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SlotKind {
+	#[default]
+	Auto,
+	Text,
+	LabelValue,
+	Spinner,
+	Progress,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -177,6 +198,61 @@ impl Segment {
 		Self::label_value(label, format_elapsed(duration), tone)
 	}
 
+	/// Build a stable slot for a state that flips between a spinner and plain
+	/// text. The slot width is derived internally from the longest label and
+	/// uses spinner chrome in both states so neighboring segments do not jump.
+	pub fn spinner_toggle(
+		spinning: bool,
+		spinning_label: impl Into<String>,
+		phase: usize,
+		spinning_tone: Tone,
+		idle_label: impl Into<String>,
+		idle_tone: Tone,
+	) -> Self {
+		let spinning_label = spinning_label.into();
+		let idle_label = idle_label.into();
+		let chars = spinning_label
+			.chars()
+			.count()
+			.max(idle_label.chars().count()) as u16;
+		if spinning {
+			Self::spinner(spinning_label, phase, spinning_tone)
+				.reserve_chars_as(chars, SlotKind::Spinner)
+		} else {
+			Self::toned_text(idle_label, idle_tone)
+				.reserve_chars_as(chars, SlotKind::Spinner)
+		}
+	}
+
+	/// Build a stable slot for a state that flips between a progress segment and
+	/// plain text. The slot width is derived internally from the widest text
+	/// payload and always reserves progress chrome so neighboring segments stay
+	/// fixed as the meter appears or disappears.
+	pub fn progress_percent_toggle(
+		in_progress: bool,
+		progress_label: impl Into<String>,
+		value: f32,
+		progress_tone: Tone,
+		idle_label: impl Into<String>,
+		idle_tone: Tone,
+	) -> Self {
+		let progress_label = progress_label.into();
+		let idle_label = idle_label.into();
+		let progress_value = format!("{:.0}%", value.clamp(0.0, 1.0) * 100.0);
+		let chars = progress_label
+			.chars()
+			.count()
+			.max(progress_value.chars().count())
+			.max(idle_label.chars().count()) as u16;
+		if in_progress {
+			Self::progress_percent(progress_label, value, progress_tone)
+				.reserve_chars_as(chars, SlotKind::Progress)
+		} else {
+			Self::toned_text(idle_label, idle_tone)
+				.reserve_chars_as(chars, SlotKind::Progress)
+		}
+	}
+
 	pub fn max_chars(mut self, max_chars: usize) -> Self {
 		match &mut self {
 			Self::Text { max_chars: slot, .. }
@@ -187,11 +263,39 @@ impl Segment {
 		self
 	}
 
+	#[allow(dead_code)] // public widget API in a binary demo crate
+	/// Escape hatch for unusual host layouts that need an exact pixel width.
+	/// Prefer `reserve_chars` for normal status content because it stays stable
+	/// without forcing the caller to micromanage pixels.
 	pub fn fixed_width(mut self, width: u16) -> Self {
 		self.set_width(SegmentWidth::Fixed(width.max(1)));
 		self
 	}
 
+	/// Reserve a stable slot sized for roughly this many monospace characters.
+	/// Use this for changing values like timers, cursor positions, counts, or
+	/// state labels that should not jiggle neighboring segments.
+	pub fn reserve_chars(mut self, chars: u16) -> Self {
+		self.set_width(SegmentWidth::Chars {
+			chars: chars.max(1),
+			slot: SlotKind::Auto,
+		});
+		self
+	}
+
+	/// Reserve a stable slot using the chrome of a specific segment kind.
+	/// Use this when one state swaps between different segment types, like a
+	/// spinner becoming plain text, but you want the slot to stay fixed.
+	pub fn reserve_chars_as(mut self, chars: u16, slot: SlotKind) -> Self {
+		self.set_width(SegmentWidth::Chars {
+			chars: chars.max(1),
+			slot,
+		});
+		self
+	}
+
+	/// Let this segment absorb extra lane width once compact and reserved
+	/// segments have taken their space. Use this sparingly for elastic labels.
 	pub fn fill_portion(mut self, portion: u16) -> Self {
 		self.set_width(SegmentWidth::FillPortion(portion.max(1)));
 		self
@@ -362,12 +466,14 @@ fn segment_view<Message: 'static>(
 	segment: Segment,
 	style: StatusBarStyle,
 ) -> Element<'static, Message> {
+	let width = segment.width();
+	let reserved_width = width.reserved_pixels(&segment);
 	match segment {
 		Segment::Text {
 			value,
 			tone,
-			width,
 			max_chars,
+			..
 		} => apply_width(
 			segment_shell(
 				text(ellipsize(&value, max_chars))
@@ -377,13 +483,14 @@ fn segment_view<Message: 'static>(
 				style,
 			),
 			width,
+			reserved_width,
 		),
 		Segment::LabelValue {
 			label,
 			value,
 			tone,
-			width,
 			max_chars,
+			..
 		} => {
 			let (label, value) = ellipsize_pair(&label, &value, max_chars);
 			apply_width(
@@ -398,14 +505,15 @@ fn segment_view<Message: 'static>(
 					style,
 				),
 				width,
+				reserved_width,
 			)
 		}
 		Segment::Spinner {
 			label,
 			phase,
 			tone,
-			width,
 			max_chars,
+			..
 		} => apply_width(
 			segment_shell(
 				row![
@@ -420,13 +528,14 @@ fn segment_view<Message: 'static>(
 				style,
 			),
 			width,
+			reserved_width,
 		),
 		Segment::Progress {
 			label,
 			value,
 			value_text,
 			tone,
-			width,
+			..
 		} => apply_width(
 			segment_shell(
 				row![
@@ -457,6 +566,7 @@ fn segment_view<Message: 'static>(
 				style,
 			),
 			width,
+			reserved_width,
 		),
 	}
 }
@@ -488,11 +598,16 @@ fn segment_shell<Message: 'static>(
 fn apply_width<'a, Message: 'static>(
 	content: impl Into<Element<'a, Message>>,
 	width: SegmentWidth,
+	reserved_width: f32,
 ) -> Element<'a, Message> {
 	match width {
 		SegmentWidth::Compact => container(content).clip(true).into(),
 		SegmentWidth::Fixed(width) => container(content)
 			.width(Length::Fixed(f32::from(width)))
+			.clip(true)
+			.into(),
+		SegmentWidth::Chars { .. } => container(content)
+			.width(Length::Fixed(reserved_width))
 			.clip(true)
 			.into(),
 		SegmentWidth::FillPortion(portion) => container(content)
@@ -546,6 +661,59 @@ impl Tone {
 	}
 }
 
+impl Segment {
+	fn width(&self) -> SegmentWidth {
+		match self {
+			Self::Text { width, .. }
+			| Self::LabelValue { width, .. }
+			| Self::Spinner { width, .. }
+			| Self::Progress { width, .. } => *width,
+		}
+	}
+}
+
+impl SegmentWidth {
+	fn reserved_pixels(self, segment: &Segment) -> f32 {
+		match self {
+			Self::Chars { chars, slot } => segment.reserved_pixels(chars, slot),
+			_ => 0.0,
+		}
+	}
+}
+
+impl Segment {
+	fn reserved_pixels(&self, chars: u16, slot: SlotKind) -> f32 {
+		let chars = f32::from(chars) * SEGMENT_CHAR_WIDTH;
+		let chrome = match slot.resolve(self) {
+			SlotKind::Auto | SlotKind::Text => SEGMENT_HORIZONTAL_PADDING,
+			SlotKind::LabelValue => SEGMENT_HORIZONTAL_PADDING + LABEL_VALUE_GAP,
+			SlotKind::Spinner => {
+				SEGMENT_HORIZONTAL_PADDING + SPINNER_SIZE_HINT + SPINNER_LABEL_GAP
+			}
+			SlotKind::Progress => {
+				SEGMENT_HORIZONTAL_PADDING + PROGRESS_WIDTH + (PROGRESS_GAP * 2.0)
+			}
+		};
+		(chars + chrome).ceil()
+	}
+}
+
+const SPINNER_SIZE_HINT: f32 = 16.0;
+
+impl SlotKind {
+	fn resolve(self, segment: &Segment) -> Self {
+		match self {
+			Self::Auto => match segment {
+				Segment::Text { .. } => Self::Text,
+				Segment::LabelValue { .. } => Self::LabelValue,
+				Segment::Spinner { .. } => Self::Spinner,
+				Segment::Progress { .. } => Self::Progress,
+			},
+			other => other,
+		}
+	}
+}
+
 impl Default for LayoutConfig {
 	fn default() -> Self {
 		Self {
@@ -560,17 +728,17 @@ impl Default for LayoutConfig {
 impl Default for StatusBarStyle {
 	fn default() -> Self {
 		Self {
-			rail_background: colors::BG_STATUS,
-			rail_separator: colors::BORDER_SUBTLE,
-			segment_background: colors::BG_SEGMENT,
-			segment_border: colors::BORDER_SUBTLE,
-			progress_background: colors::BG_STATUS_BAR,
-			progress_bar: colors::STATUS_BAR,
-			text_normal: colors::TEXT_STATUS,
-			text_accent: colors::TEXT_STATUS,
-			text_success: colors::SUCCESS,
-			text_warning: colors::WARNING,
-			text_danger: colors::DANGER,
+			rail_background: colors::STATUS_BAR_RAIL_BACKGROUND,
+			rail_separator: colors::STATUS_BAR_RAIL_SEPARATOR,
+			segment_background: colors::STATUS_BAR_SEGMENT_BACKGROUND,
+			segment_border: colors::STATUS_BAR_SEGMENT_BORDER,
+			progress_background: colors::PROGRESS_BAR_TRACK_BACKGROUND,
+			progress_bar: colors::PROGRESS_BAR_FILL,
+			text_normal: colors::STATUS_BAR_TEXT,
+			text_accent: colors::STATUS_BAR_TEXT_ACCENT,
+			text_success: colors::STATUS_BAR_TEXT_SUCCESS,
+			text_warning: colors::STATUS_BAR_TEXT_WARNING,
+			text_danger: colors::STATUS_BAR_TEXT_DANGER,
 		}
 	}
 }
